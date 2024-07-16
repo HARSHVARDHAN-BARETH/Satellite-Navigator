@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satellite Tracker</title>
+    <link rel="stylesheet" href="/css/Style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+
+        img {
+            width: 150px;
+            height: 100px;
+        }
+    </style>
+</head>
+<body>
+     <div class="container">
+        <h1>Satellite Navigator🚀</h1>
+        <input type="text" id="satelliteIds" placeholder="Enter Satellite IDs (comma-separated)">
+        <input type="text" id="observerLat" placeholder="Enter Observer Latitude">
+        <input type="text" id="observerLng" placeholder="Enter Observer Longitude">
+        <input type="text" id="observerAlt" placeholder="Enter Observer Altitude">
+        <input type="text" id="seconds" placeholder="Enter Number of Seconds">
+        <button onclick="trackSatellites()">Track Satellites</button>
+        <div id="map"></div>
+        <pre id="satelliteData"></pre>
+     </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let ws;
+        let satelliteMarkers = {};
+
+        function initializeMap() {
+            map = L.map('map').setView([0, 0], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+        }
+
+        function trackSatellites() {
+            const satelliteIds = document.getElementById('satelliteIds').value.split(',');
+            const observerLat = document.getElementById('observerLat').value;
+            const observerLng = document.getElementById('observerLng').value;
+            const observerAlt = document.getElementById('observerAlt').value;
+            const seconds = document.getElementById('seconds').value;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+
+            // Correct WebSocket URL
+            ws = new WebSocket(`ws://${window.location.host}`);
+
+            ws.onopen = () => {
+                console.log('WebSocket connection established.');
+                ws.send(JSON.stringify({ satellites: satelliteIds, lat: observerLat, lng: observerLng, alt: observerAlt, seconds }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received message:', data);
+                document.getElementById('satelliteData').innerText = JSON.stringify(data, null, 2);
+                updateMap(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket Connection Closed');
+            };
+        }
+
+        function updateMap(data) {
+            const { positions, info } = data;
+            const satname = info.satname;
+            const latlngs = positions.map(pos => [pos.satlatitude, pos.satlongitude]);
+
+            clearSatelliteMarkers();
+
+            const color = getRandomColor();
+            const polyline = L.polyline(latlngs, { color }).addTo(map);
+            const marker = L.marker(latlngs[0]).addTo(map)
+                .bindPopup(`Satellite: ${satname}<br>Latitude: ${latlngs[0][0]}<br>Longitude: ${latlngs[0][1]}<br><img src="https://images.news18.com/ibnlive/uploads/2023/01/space-comms-future.jpg" alt="Satellite Image">`)
+                .openPopup();
+
+            satelliteMarkers[satname] = {
+                polyline,
+                marker
+            };
+
+            map.fitBounds(L.latLngBounds(latlngs));
+        }
+
+        function clearSatelliteMarkers() {
+            Object.values(satelliteMarkers).forEach(markerObj => {
+                map.removeLayer(markerObj.polyline);
+                map.removeLayer(markerObj.marker);
+            });
+            satelliteMarkers = {};
+        }
+
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeMap);
+    </script>
+</body>
+</html>
